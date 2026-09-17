@@ -1,0 +1,29 @@
+{
+  "name": "directorr",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Directorr - client-side video template platform (Magic Link recording, zero post-production).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:headless": "playwright test --project=chrome-headless",
+    "test:headed": "playwright test --project=chrome-headed",
+    "test:smoke": "playwright test --project=chrome-headless tests/smoke.spec.js",
+    "test:report": "playwright show-report"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "@vitejs/plugin-react": "^4.3.2",
+    "vite": "^5.4.8"
+  }
+}

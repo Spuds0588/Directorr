@@ -1,0 +1,25 @@
+# Freebuff / tooling metadata
+.freebuff/
+
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Local env (Supabase keys). Never commit real keys.
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.log
+npm-debug.log*
