@@ -93,6 +93,8 @@ Chronological log of what changed and why. Newest entries at the bottom.
 3. **`waitForMedia` and short prompts** — a prompt that fits its viewport never moved, which looked broken rather than intentional; it now centres on the guide line.
 4. A test caught its own weakness: `toContainText('Narration')` matched "Narration **pending**", so a narration take could still be running when the compile assertion ran. The assertions now key off the button flipping to "Re-narrate".
 
+**Deployed and verified.** Pushed to `main` (commit `05f48d7`); the workflow gated on the headless suite and published successfully. The production suite then exercised the live artifact in headless and headed Chrome: **12/12 passed**, including the B-roll picker shipping from the Pages sub-path and a clip-narrated scene template completing end to end on the deployed build (continuous take ≈318–327 KB, compiled scene ≈209–211 KB).
+
 **Verification.** `npm run build` clean. Sandbox: `chrome-headless` **32/32 passed**, `chrome-headed` **32/32 passed** (64 executions, both suites including the B-roll picker). New recordings are real: a clip-narrated 2-clip compile ≈226–242 KB, a one-take narration compile ≈159–185 KB, Mode A prompt-only ≈330 KB. The prompt/canvas split is asserted by intercepting every `fillText` call on the page, which is a stronger guarantee than a pixel check: the audience string is composited and the prompt string provably never touches a canvas.
 
 **Decisions.**
