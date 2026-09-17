@@ -37,6 +37,10 @@ jobs:
           # Public-safe values; absent => the site runs on the mock backend.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          # Optional: stock-provider search endpoint. Just a URL, not a secret; the
+          # provider API keys live in Supabase's secret store. Absent => the
+          # providers tab reports "not configured" and everything else still works.
+          VITE_STOCK_SEARCH_ENDPOINT: ${{ vars.VITE_STOCK_SEARCH_ENDPOINT }}
           # GitHub Pages project sites live at /<repo>/.
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build

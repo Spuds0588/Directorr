@@ -44,6 +44,9 @@ test.describe('template creation', () => {
   test('accepts an ephemeral asset upload with a 7-day warning', async ({ page }) => {
     await page.goto('/#/create');
     await page.getByTestId('create-title').fill('Asset Test');
+    // Uploads live behind the picker's Upload tab; the studio library is the
+    // default tab because it needs no keys.
+    await page.getByTestId('asset-tab-upload').click();
     await page.getByTestId('create-assets').setInputFiles({
       name: 'broll.png',
       mimeType: 'image/png',
@@ -51,7 +54,7 @@ test.describe('template creation', () => {
     });
 
     await expect(page.getByTestId('asset-list')).toContainText('broll.png');
-    await expect(page.getByText(/auto-deleted after 7 days/i)).toBeVisible();
+    await expect(page.getByTestId('picker-notice')).toContainText('auto-deleted after 7 days');
   });
 
   test('blocks publishing without a title', async ({ page }) => {

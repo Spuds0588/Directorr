@@ -9,6 +9,7 @@
 const TEMPLATES_KEY = 'directorr.templates.v1';
 const ASSETS_KEY = 'directorr.assets.v1';
 export const EPHEMERAL_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const DATA_URL_LIMIT = 1.5 * 1024 * 1024;
 
 function readJson(key) {
   try {
@@ -90,11 +91,20 @@ export async function uploadAsset(file, { folder = 'uploads' } = {}) {
   const path = `${folder}/${id}-${file.name}`;
   let url;
   let inMemoryOnly = false;
-  try {
-    url = await fileToDataUrl(file);
-  } catch {
+  // localStorage is ~5 MB per origin and a data URL is ~1.33x the file size, so
+  // anything above this threshold is referenced as a Blob URL for the session
+  // instead. Real Supabase storage has no such limit; this keeps the mock
+  // backend honest about the same API without blowing the quota.
+  if (file.size > DATA_URL_LIMIT) {
     url = URL.createObjectURL(file);
     inMemoryOnly = true;
+  } else {
+    try {
+      url = await fileToDataUrl(file);
+    } catch {
+      url = URL.createObjectURL(file);
+      inMemoryOnly = true;
+    }
   }
   const asset = {
     id,

@@ -50,6 +50,51 @@ export function sceneTemplate(overrides = {}) {
   };
 }
 
+/**
+ * A scene template with clip prompts and a narration mode, for the audio-only
+ * narration paths. Defaults to two short clips so a full take stays quick.
+ */
+export function narrationSceneTemplate({ narration, scenes, ...overrides } = {}) {
+  const base = sceneTemplate(overrides);
+  return {
+    ...base,
+    id: 'test-narration-1',
+    title: 'Narration Test',
+    sceneConfig: {
+      ...base.sceneConfig,
+      scenes:
+        scenes ||
+        [
+          { id: 'clip-1', type: 'camera', durationSeconds: 1.2, instructions: 'Introduce yourself in one short line.' },
+          { id: 'clip-2', type: 'title-slide', durationSeconds: 1.2, text: 'Thanks!', instructions: 'Close it out.' },
+        ],
+    },
+    narration: {
+      mode: 'clip-narration',
+      cleanup: { engine: 'webaudio', preset: 'voice' },
+      musicDuck: 0.35,
+      ...narration,
+    },
+  };
+}
+
+/**
+ * Record every string the page ever draws with `fillText`, so a test can assert
+ * what the audience actually gets compared with what the talent only reads.
+ */
+export function spyOnCanvasText(page) {
+  return page.addInitScript(() => {
+    window.__drawnText = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function patchedFillText(text, ...rest) {
+      window.__drawnText.push(String(text));
+      return original.call(this, text, ...rest);
+    };
+  });
+}
+
+export const drawnCanvasText = (page) => page.evaluate(() => window.__drawnText || []);
+
 /** A tiny valid PNG for exercising the asset upload path. */
 export const ONE_PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',

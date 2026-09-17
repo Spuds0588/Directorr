@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "library:build": "node scripts/build-library.mjs",
     "preview": "vite preview",
     "test": "playwright test",
     "test:headless": "playwright test --project=chrome-headless",

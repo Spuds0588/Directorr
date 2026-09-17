@@ -7,10 +7,13 @@ import {
   pickRecorderMimeType,
   buildFileName,
   waitForMedia,
-  wrapText,
   createImageElement,
   createVideoElement,
 } from '../../lib/mediaUtils.js';
+import { drawTeleprompter } from '../../lib/teleprompter.js';
+import { DEFAULT_NARRATION, narrationModeById } from '../../lib/templateSchema.js';
+import { createVoiceProcessor, readLevel } from '../../lib/audioCleanup.js';
+import Teleprompter from '../Teleprompter.jsx';
 
 const CANVAS_W = 720;
 const CANVAS_H = 1280;
@@ -34,6 +37,12 @@ export default function ContinuousEngine({ template }) {
   const config = template.continuousConfig || {};
   const theme = config.theme || {};
   const duration = Number(template.durationSeconds) || 30;
+  const narration = { ...DEFAULT_NARRATION, ...(template.narration || {}) };
+  const narrationMode = narrationModeById(narration.mode);
+  // Mode A has no replay path, so the microphone is always captured with the
+  // picture: the scrolling script IS the narration prompt. Creators can still
+  // choose whether that script ends up in the published video.
+  const showScriptInOutput = config.showScriptInOutput !== false;
 
   const { stream, error: cameraError } = useCamera({ video: true, audio: true });
   const setOutput = useAppStore((s) => s.setOutput);
@@ -46,11 +55,15 @@ export default function ContinuousEngine({ template }) {
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
   const elapsedRef = useRef(0);
+  const micRef = useRef(null);
+  const micLevelRef = useRef(0);
 
   const [phase, setPhase] = useState('idle'); // idle | recording | done
   const [elapsed, setElapsed] = useState(0);
   const [assetsReady, setAssetsReady] = useState(false);
   const [error, setError] = useState(null);
+  const [takeStartedAt, setTakeStartedAt] = useState(null);
+  const [micLevel, setMicLevel] = useState(0);
 
   // ---- Camera binding -------------------------------------------------------
   useEffect(() => {
@@ -117,32 +130,21 @@ export default function ContinuousEngine({ template }) {
         ctx.restore();
       }
 
-      // MID: teleprompter / captions
-      const midTop = WEBCAM_H;
-      const midH = ASSET_Y - WEBCAM_H;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(0, midTop, CANVAS_W, midH);
-
-      const fontSize = Number(theme.fontSize) || 44;
-      ctx.fillStyle = theme.textColor || '#FFFFFF';
-      ctx.font = `600 ${fontSize}px ${theme.font || 'Arial'}, sans-serif`;
-      ctx.textBaseline = 'top';
-
-      const padding = 40;
-      const lines = wrapText(ctx, config.script || '', CANVAS_W - padding * 2);
-      const lineHeight = fontSize * 1.35;
-      const viewH = midH - 48;
-      const totalH = lines.length * lineHeight;
-      const maxScroll = Math.max(0, totalH - viewH);
+      // MID: caption band. Left empty when the creator wants the script to be a
+      // talent-only prompt — the canvas is what the audience gets, always.
       const progress = duration > 0 ? Math.min(1, t / duration) : 0;
-      const offsetY = midTop + 24 - progress * maxScroll;
-
-      lines.forEach((line, i) => {
-        const y = offsetY + i * lineHeight;
-        if (y > midTop - lineHeight && y < ASSET_Y) {
-          ctx.fillText(line, padding, y);
-        }
-      });
+      if (showScriptInOutput) {
+        drawTeleprompter(ctx, {
+          text: config.script || '',
+          rect: { x: 0, y: WEBCAM_H, width: CANVAS_W, height: ASSET_Y - WEBCAM_H },
+          progress,
+          // Only the text styling carries over; the caption band keeps its own
+          // translucent fill, and `guide: false` keeps captions looking like
+          // captions rather than a teleprompter.
+          theme: { font: theme.font, fontSize: theme.fontSize, textColor: theme.textColor },
+          guide: false,
+        });
+      }
 
       // Progress bar along the very bottom edge.
       ctx.fillStyle = 'rgba(255,255,255,0.2)';
@@ -150,7 +152,7 @@ export default function ContinuousEngine({ template }) {
       ctx.fillStyle = theme.textColor || '#FFFFFF';
       ctx.fillRect(0, CANVAS_H - 8, CANVAS_W * progress, 8);
     },
-    [config.script, theme.backgroundColor, theme.font, theme.fontSize, theme.textColor, duration],
+    [config.script, showScriptInOutput, theme.backgroundColor, theme.font, theme.fontSize, theme.textColor, duration],
   );
 
   // ---- Persistent render loop ----------------------------------------------
@@ -174,6 +176,13 @@ export default function ContinuousEngine({ template }) {
           elapsedRef.current = clamped;
           setElapsed(clamped);
         }
+        // Input meter, sampled on the loop we already run. Bucketed so a quiet
+        // room does not re-render 60 times a second.
+        const bucket = Math.round(readLevel(micRef.current?.analyser) * 20) / 20;
+        if (bucket !== micLevelRef.current) {
+          micLevelRef.current = bucket;
+          setMicLevel(bucket);
+        }
         if (t >= duration && recorderRef.current?.state === 'recording') {
           console.log('[ContinuousEngine] duration reached — auto-stopping');
           recorderRef.current.stop();
@@ -195,7 +204,37 @@ export default function ContinuousEngine({ template }) {
     }
   }, []);
 
-  const startRecording = useCallback(() => {
+  /**
+   * Route the microphone through the cleanup chain and hand back the processed
+   * track. Without this the browser's suppressor is all you get and the take's
+   * level is whatever the talent's distance happened to be.
+   */
+  const openCleanedMic = useCallback(async () => {
+    if (!stream || !stream.getAudioTracks().length) return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    await ctx.resume();
+    const source = ctx.createMediaStreamSource(stream);
+    const processor = createVoiceProcessor(ctx, source, narration.cleanup);
+    const destination = ctx.createMediaStreamDestination();
+    processor.output.connect(destination);
+    console.log('[ContinuousEngine] voice cleanup ready', processor.describe());
+    return { ctx, source, processor, destination, tracks: destination.stream.getAudioTracks() };
+  }, [narration.cleanup, stream]);
+
+  const closeCleanedMic = useCallback(async () => {
+    const mic = micRef.current;
+    micRef.current = null;
+    if (!mic) return;
+    mic.processor.dispose();
+    try {
+      await mic.ctx.close();
+    } catch (err) {
+      console.warn('[ContinuousEngine] mic context close', err);
+    }
+  }, []);
+
+  const startRecording = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     if (!assetsReady) {
@@ -205,9 +244,19 @@ export default function ContinuousEngine({ template }) {
     setError(null);
     clearOutput();
 
+    let mic = null;
+    try {
+      mic = await openCleanedMic();
+    } catch (err) {
+      console.error('[ContinuousEngine] could not open the cleaned mic', err);
+      setError(`Microphone setup failed: ${err.message}`);
+      return;
+    }
+    micRef.current = mic;
+
     const canvasStream = canvas.captureStream(FPS);
-    if (stream) {
-      stream.getAudioTracks().forEach((track) => canvasStream.addTrack(track));
+    if (mic) {
+      mic.tracks.forEach((track) => canvasStream.addTrack(track));
     }
 
     const mimeType = pickRecorderMimeType();
@@ -224,10 +273,13 @@ export default function ContinuousEngine({ template }) {
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
     };
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       const finalType = mimeType || chunksRef.current[0]?.type || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: finalType });
       console.log('[ContinuousEngine] recording stopped', { size: blob.size, type: finalType });
+      await closeCleanedMic();
+      setMicLevel(0);
+      micLevelRef.current = 0;
       setOutput({
         blob,
         url: URL.createObjectURL(blob),
@@ -237,22 +289,34 @@ export default function ContinuousEngine({ template }) {
         mode: 'continuous',
       });
       setPhase('done');
+      setTakeStartedAt(null);
     };
 
     recorderRef.current = recorder;
     chunksRef.current = [];
-    startTimeRef.current = performance.now();
+    const startedAt = performance.now();
+    startTimeRef.current = startedAt;
     elapsedRef.current = 0;
     setElapsed(0);
+    setTakeStartedAt(startedAt);
     setPhase('recording');
     recorder.start(1000);
-    console.log('[ContinuousEngine] recording started', { duration, mimeType });
-  }, [assetsReady, clearOutput, duration, setOutput, stream]);
+    console.log('[ContinuousEngine] recording started', {
+      duration,
+      mimeType,
+      narrationMode: narrationMode.id,
+      voiceCleanup: mic ? mic.processor.describe() : null,
+    });
+  }, [assetsReady, clearOutput, closeCleanedMic, duration, narration.cleanup, narrationMode.id, openCleanedMic, setOutput]);
 
-  // Cleanup any live recorder on unmount.
-  useEffect(() => () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
-  }, []);
+  // Cleanup any live recorder and microphone graph on unmount.
+  useEffect(
+    () => () => {
+      if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+      closeCleanedMic();
+    },
+    [closeCleanedMic],
+  );
 
   const progressPct = Math.min(100, (elapsed / duration) * 100);
 
@@ -261,7 +325,19 @@ export default function ContinuousEngine({ template }) {
       <section className="card">
         <h2>Continuous take</h2>
         <p>{config.script ? 'Read the scrolling script on screen.' : 'No script provided for this template.'}</p>
-        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="preview" data-testid="record-preview-canvas" />
+        <div className="prompt-stage">
+          <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="preview" data-testid="record-preview-canvas" />
+          {!showScriptInOutput ? (
+            <Teleprompter
+              text={config.script}
+              durationSeconds={duration}
+              active={phase === 'recording'}
+              startedAt={takeStartedAt}
+              theme={theme}
+              label="Read this — live prompt"
+            />
+          ) : null}
+        </div>
         <video ref={cameraVideoRef} muted playsInline style={{ display: 'none' }} />
         {cameraError ? <p className="error" data-testid="camera-error">{cameraError}</p> : null}
         {error ? <p className="error" data-testid="record-error">{error}</p> : null}
@@ -274,6 +350,18 @@ export default function ContinuousEngine({ template }) {
                 ? `Ready — ${formatSeconds(duration)} one-take`
                 : 'Loading assets…'}
         </p>
+        <div className="row">
+          <span className="asset-meta">Mic</span>
+          <div className="level-meter" data-testid="mic-meter" data-level={micLevel}>
+            <div className="level-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+          </div>
+          <span className="asset-meta">{narrationMode.label}</span>
+        </div>
+        {showScriptInOutput ? (
+          <p className="asset-meta" data-testid="script-band-note">
+            The script is part of the composite as a caption band.
+          </p>
+        ) : null}
         <div className="row">
           <button
             type="button"
