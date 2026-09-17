@@ -30,4 +30,6 @@ Chronological log of what changed and why. Newest entries at the bottom.
 - Chose a localStorage mock over stubbing network calls so the product is genuinely usable before Supabase exists, and so the tests exercise the real persistence path.
 - Recommended **direct browser → Supabase** (anon key + RLS) instead of a Cloudflare Worker proxy, per the request to minimise layers. See `docs/SETUP-SUPABASE.md`.
 
+**Deployed and verified.** GitHub Pages enabled with the Actions source at <https://spuds0588.github.io/Directorr/>. The deploy workflow gates on the headless suite, then publishes with `VITE_BASE=/Directorr/`. A dedicated production config (`playwright.production.config.js` + `production-tests/`) then exercised the live artifact in both headless and headed Chrome: **6/6 passed**, with real recordings produced from the deployed build (continuous ≈313 KB / ≈330 KB, compiled scene ≈236 KB / ≈221 KB). The live site runs on the mock backend because no Supabase variables are configured yet — which is the intended zero-config state.
+
 **Known gaps.** B-roll scene type has no automated test; MP4 capture is browser-dependent; the `pg_cron` cleanup is written but not applied until the Supabase project exists.

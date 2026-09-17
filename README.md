@@ -38,16 +38,20 @@ Playwright runs the full suite in **both** a headless and a headed Chrome sessio
 microphone devices:
 
 ```bash
-npm test              # both projects
+npm test              # local dev server, both Chrome projects
 npm run test:headless # chrome-headless only
 npm run test:headed   # chrome-headed only (needs a display)
+
+# Against the live deploy (no dev server, real GitHub Pages artifact):
+npm run test:prod     # override with PROD_URL=https://... npm run test:prod
 ```
 
 Coverage spans template **creation** (both modes, upload, validation) and template **filling** (one-take
 continuous recording; scene record → preview → compile), asserting real recorded byte counts rather than
 mocked success.
 
-> Headless Chrome is what runs in CI. `npm run test:headed` is a local-only check for the on-screen path.
+> Headless Chrome is what runs in CI and gates the deploy. The headed project is a local-only check for
+the on-screen path.
 
 ## Deployment
 

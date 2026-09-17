@@ -12,6 +12,9 @@
     "test:headless": "playwright test --project=chrome-headless",
     "test:headed": "playwright test --project=chrome-headed",
     "test:smoke": "playwright test --project=chrome-headless tests/smoke.spec.js",
+    "test:prod": "playwright test -c playwright.production.config.js",
+    "test:prod:headless": "playwright test -c playwright.production.config.js --project=prod-headless",
+    "test:prod:headed": "playwright test -c playwright.production.config.js --project=prod-headed",
     "test:report": "playwright show-report"
   },
   "dependencies": {

@@ -40,13 +40,14 @@ Status legend: `[x]` shipped in v1 · `[ ]` not yet started · `[~]` partially d
 - [x] Template creation coverage for both modes + upload + validation.
 - [x] Template filling coverage: continuous one-take (auto-stop, real bytes written).
 - [x] Template filling coverage: scene record → preview → compile (real bytes written).
+- [x] Production suite (`production-tests/`) verified against the live GitHub Pages URL in headless + headed Chrome.
 - [~] B-roll scene type is implemented but not covered by an automated test (needs a generated video fixture).
 - [ ] Add a `video/mp4` capture assertion for browsers that support MP4 recording.
 
 ## Phase 7: Deployment
 - [x] GitHub Pages workflow (`.github/workflows/deploy.yml`) — tests gate the deploy.
 - [x] Supabase keys flow through GitHub Actions **variables/secrets** into the build (no runtime proxy).
-- [ ] First production deploy verified.
+- [x] First production deploy verified at <https://spuds0588.github.io/Directorr/>.
 - [ ] Supabase project provisioned and keys wired.
 
 ## Explicitly out of scope (YAGNI)
